@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Orbiter", "Orbiter\Orbiter.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LibOrbiter", "LibOrbiter\LibOrbiter.csproj", "{91298597-C0A8-4DD4-84AC-7B4C768F23E7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Orbiter.Console", "Orbiter.Console\Orbiter.Console.csproj", "{2F69F10C-3891-4600-8ADA-781769B61151}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,6 +25,10 @@ Global
 		{91298597-C0A8-4DD4-84AC-7B4C768F23E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{91298597-C0A8-4DD4-84AC-7B4C768F23E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{91298597-C0A8-4DD4-84AC-7B4C768F23E7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F69F10C-3891-4600-8ADA-781769B61151}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F69F10C-3891-4600-8ADA-781769B61151}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F69F10C-3891-4600-8ADA-781769B61151}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F69F10C-3891-4600-8ADA-781769B61151}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
