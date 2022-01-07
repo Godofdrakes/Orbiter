@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using LibOrbiter;
+using LibOrbiter.Model;
 using Newtonsoft.Json;
 
 namespace Orbiter.Console;
@@ -47,10 +48,16 @@ static class Program
 
 		var backgroundTask = Task.Run(async () => await orbiter.BackgroundTask(token), token);
 
-		var characterDeath = new OrbiterSubscribeAction();
-		characterDeath.EventNames.Add("Death");
-		characterDeath.Characters.Add("all");
-		characterDeath.Worlds.Add("1");
+		var characterDeath = new SubscribeAction();
+		characterDeath.AddEventRange(
+			typeof(DeathPayload),
+			typeof(VehicleDestroyPayload),
+			typeof(PlayerLoginPayload),
+			typeof(PlayerLogoutPayload),
+			typeof(PlayerFacilityCapturePayload),
+			typeof(PlayerFacilityDefendPayload),
+			typeof(BattleRankUpPayload));
+		characterDeath.Characters.AddRange(args);
 		orbiter.Send(characterDeath, token);
 
 		System.Console.WriteLine("Listening for events...");
@@ -59,21 +66,18 @@ static class Program
 		{
 			if (orbiter.Pump(out var response, token))
 			{
-				System.Console.WriteLine($"Event received ({response.Type})");
-
 				switch (response.Type)
 				{
 					case "serviceMessage":
 					{
-						switch (response.Payload)
+						if (response.Payload != null)
 						{
-							case OrbiterDeathPayload deathPayload:
-								System.Console.WriteLine($"[{deathPayload.Timestamp}] {deathPayload.AttackerCharacterId} killed {deathPayload.CharacterId}{(deathPayload.IsHeadshot ? " (headshot)" : "")}");
-								break;
+							System.Console.WriteLine(response.Payload.GetMessage());
 						}
 
 						break;
 					}
+					
 				}
 			}
 		}

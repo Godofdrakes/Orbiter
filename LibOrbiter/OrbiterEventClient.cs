@@ -13,50 +13,25 @@ public class OrbiterAction
 {
 	[JsonProperty("action")]
 	public string Action { get; protected set; } = string.Empty;
-	
+
 	[JsonProperty("service")]
 	public string Service { get; } = "event";
 }
 
 [JsonObject]
-public class OrbiterEchoAction : OrbiterAction
-{
-	public OrbiterEchoAction() => Action = "echo";
-	
-	[JsonProperty("payload")]
-	public object Payload { get; set; } = new {};
-}
-
-[JsonObject]
-public class OrbiterSubscribeAction : OrbiterAction
-{
-	public OrbiterSubscribeAction() => Action = "subscribe";
-	
-	[JsonProperty("characters", DefaultValueHandling = DefaultValueHandling.Ignore)]
-	public List<string> Characters { get; } = new();
-	
-	[JsonProperty("eventNames", DefaultValueHandling = DefaultValueHandling.Ignore)]
-	public List<string> EventNames { get; } = new();
-
-	[JsonProperty("worlds", DefaultValueHandling = DefaultValueHandling.Ignore)]
-	public List<string> Worlds { get; } = new();
-	
-	[JsonProperty("logicalAndCharactersWithWorlds", DefaultValueHandling = DefaultValueHandling.Ignore)]
-	public bool LogicalAndCharactersWithWorlds { get; set; }
-}
-
-[JsonObject]
-public class OrbiterPayload
+public abstract class OrbiterPayload
 {
 	[JsonProperty("event_name")]
 	public string EventName { get; set; } = string.Empty;
+
+	public abstract string GetMessage();
 }
 
 [JsonObject]
 public class OrbiterResponse
 {
 	[JsonProperty("payload")]
-	[JsonConverter(typeof(OrbiterPayloadConverter))]
+	[JsonConverter(typeof(PayloadConverter))]
 	public OrbiterPayload? Payload { get; set; }
 
 	[JsonProperty("service")]
@@ -64,28 +39,6 @@ public class OrbiterResponse
 
 	[JsonProperty("type")]
 	public string Type { get; set; } = string.Empty;
-}
-
-[JsonObject]
-public class OrbiterDeathPayload : OrbiterPayload
-{
-	[JsonProperty("attacker_character_id")]
-	public string AttackerCharacterId { get; set; } = string.Empty;
-
-	[JsonProperty("character_id")]
-	public string CharacterId { get; set; } = string.Empty;
-
-	[JsonProperty("is_headshot")]
-	private int _isHeadshot;
-
-	[JsonProperty("timestamp")]
-	private long _timestamp;
-
-	[JsonIgnore]
-	public bool IsHeadshot => _isHeadshot == 1;
-
-	[JsonIgnore]
-	public DateTime Timestamp => DateTime.FromFileTimeUtc(_timestamp);
 }
 
 public class OrbiterEventClient : IDisposable
@@ -111,8 +64,10 @@ public class OrbiterEventClient : IDisposable
 		{
 			ContractResolver = new CompositeContractResolver()
 			{
-				new CamelCasePropertyNamesContractResolver(),
 				new ShouldSerializeContractResolver()
+				{
+					NamingStrategy = new SnakeCaseNamingStrategy()
+				}
 			}
 		};
 	}
@@ -154,14 +109,14 @@ public class OrbiterEventClient : IDisposable
 		{
 			response = null;
 		}
-		
+
 		return false;
 	}
 
 	public async Task BackgroundTask(CancellationToken token = default)
 	{
 		var uri = new Uri($"wss://push.planetside2.com/streaming?environment={Environment}&service-id=s:{ServiceId}");
-		
+
 		await _webSocket.ConnectAsync(uri, token);
 
 		var buffer = new byte[2046];
