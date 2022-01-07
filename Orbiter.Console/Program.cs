@@ -23,8 +23,6 @@ static class Program
 			}
 		};
 
-		var events = new BlockingCollection<OrbiterResponse>();
-		
 		System.Console.WriteLine("Starting Orbiter...");
 		
 		var orbiter = new OrbiterEventClient();

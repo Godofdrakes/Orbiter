@@ -91,7 +91,7 @@ public class OrbiterDeathPayload : OrbiterPayload
 public class OrbiterEventClient : IDisposable
 {
 	private readonly ClientWebSocket _webSocket;
-	private readonly CompositeContractResolver _contractResolver;
+	private readonly JsonSerializerSettings _jsonSettings;
 	private readonly BlockingCollection<OrbiterAction> _actionQueue = new();
 	private readonly BlockingCollection<OrbiterResponse> _responseQueue = new();
 
@@ -107,10 +107,13 @@ public class OrbiterEventClient : IDisposable
 
 		_webSocket = new ClientWebSocket();
 
-		_contractResolver = new CompositeContractResolver()
+		_jsonSettings = new JsonSerializerSettings()
 		{
-			new CamelCasePropertyNamesContractResolver(),
-			new ShouldSerializeContractResolver()
+			ContractResolver = new CompositeContractResolver()
+			{
+				new CamelCasePropertyNamesContractResolver(),
+				new ShouldSerializeContractResolver()
+			}
 		};
 	}
 
@@ -209,7 +212,7 @@ public class OrbiterEventClient : IDisposable
 
 		OnJsonReceived?.Invoke(json);
 
-		return JsonConvert.DeserializeObject<OrbiterResponse>(json);
+		return JsonConvert.DeserializeObject<OrbiterResponse>(json, _jsonSettings);
 	}
 
 	public void Dispose()

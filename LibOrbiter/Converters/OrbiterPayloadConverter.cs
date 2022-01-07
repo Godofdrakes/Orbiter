@@ -20,7 +20,7 @@ public class OrbiterPayloadConverter : JsonConverter<OrbiterPayload>
 
 		var obj = JObject.Load(reader);
 
-		var eventType = obj.GetValue("event_type");
+		var eventType = obj.GetValue("event_name");
 
 		if (eventType == null || eventType.Type == JTokenType.Null)
 		{
