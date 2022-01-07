@@ -1,4 +1,4 @@
-﻿
+﻿using System.Collections.Concurrent;
 using LibOrbiter;
 using Newtonsoft.Json;
 
@@ -6,15 +6,28 @@ namespace Orbiter.Console;
 
 static class Program
 {
-	static async Task Main(string[] args)
+	static void Main(string[] args)
 	{
-		using var tokenSource = new CancellationTokenSource();
+		var tokenSource = new CancellationTokenSource();
 
-		var buffer = new byte[2048];
+		var token = tokenSource.Token;
 
-		System.Console.CancelKeyPress += (sender, eventArgs) => { tokenSource.Cancel(); };
+		System.Console.CancelKeyPress += (sender, eventArgs) =>
+		{
+			eventArgs.Cancel = true;
 
-		using var orbiter = new OrbiterEventClient();
+			if (!tokenSource.IsCancellationRequested)
+			{
+				tokenSource.Cancel();
+				tokenSource.Dispose();
+			}
+		};
+
+		var events = new BlockingCollection<OrbiterResponse>();
+		
+		System.Console.WriteLine("Starting Orbiter...");
+		
+		var orbiter = new OrbiterEventClient();
 		
 #if DEBUG
 		orbiter.OnJsonReceived += json =>
@@ -23,7 +36,10 @@ static class Program
 			using var stringWriter = new StringWriter();
 
 			var jsonReader = new JsonTextReader(stringReader);
-			var jsonWriter = new JsonTextWriter(stringWriter) {Formatting = Formatting.Indented};
+			var jsonWriter = new JsonTextWriter(stringWriter)
+			{
+				Formatting = Formatting.Indented
+			};
 
 			jsonWriter.WriteToken(jsonReader);
 
@@ -31,32 +47,37 @@ static class Program
 		};
 #endif
 
-		while (!tokenSource.IsCancellationRequested)
+		var backgroundTask = Task.Run(async () => await orbiter.BackgroundTask(token), token);
+
+		var characterDeath = new OrbiterSubscribeAction();
+		characterDeath.EventNames.Add("Death");
+		characterDeath.Characters.Add("all");
+		characterDeath.Worlds.Add("1");
+		orbiter.Send(characterDeath, token);
+
+		System.Console.WriteLine("Listening for events...");
+
+		while (!token.IsCancellationRequested)
 		{
-			System.Console.WriteLine("Connecting...");
-
-			await orbiter.Connect(tokenSource.Token);
-
-			var characterDeath = new OrbiterSubscribeAction();
-			characterDeath.EventNames.Add("Death");
-			characterDeath.Characters.AddRange(args);
-
-			System.Console.WriteLine("Subscribing...");
-			
-			await orbiter.Send(characterDeath, tokenSource.Token);
-			
-			System.Console.WriteLine("Listening for death events...");
-		
-			while (!tokenSource.IsCancellationRequested)
+			if (orbiter.Pump(out var response, token))
 			{
-				var response = await orbiter.Receive(buffer, tokenSource.Token);
-				if (response == null)
-					break;
-			
-				System.Console.WriteLine($"Boop ({response.Type})");
+				System.Console.WriteLine($"Event received ({response.Type})");
+
+				switch (response.Type)
+				{
+					case "serviceMessage":
+					{
+						switch (response.Payload)
+						{
+							case OrbiterDeathPayload deathPayload:
+								System.Console.WriteLine($"[{deathPayload.Timestamp}] {deathPayload.AttackerCharacterId} killed {deathPayload.CharacterId}{(deathPayload.IsHeadshot ? " (headshot)" : "")}");
+								break;
+						}
+
+						break;
+					}
+				}
 			}
 		}
-		
-		System.Console.WriteLine("Exiting...");
 	}
 }

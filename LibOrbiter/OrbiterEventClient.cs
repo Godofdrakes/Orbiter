@@ -1,8 +1,11 @@
-﻿using System.Net.WebSockets;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Net.WebSockets;
 using System.Text;
 using LibOrbiter.Converters;
 using LibOrbiter.Converters.PS2V2;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace LibOrbiter;
 
@@ -29,22 +32,28 @@ public class OrbiterSubscribeAction : OrbiterAction
 {
 	public OrbiterSubscribeAction() => Action = "subscribe";
 	
-	[JsonProperty("characters")]
+	[JsonProperty("characters", DefaultValueHandling = DefaultValueHandling.Ignore)]
 	public List<string> Characters { get; } = new();
 	
-	[JsonProperty("eventNames")]
+	[JsonProperty("eventNames", DefaultValueHandling = DefaultValueHandling.Ignore)]
 	public List<string> EventNames { get; } = new();
+
+	[JsonProperty("worlds", DefaultValueHandling = DefaultValueHandling.Ignore)]
+	public List<string> Worlds { get; } = new();
+	
+	[JsonProperty("logicalAndCharactersWithWorlds", DefaultValueHandling = DefaultValueHandling.Ignore)]
+	public bool LogicalAndCharactersWithWorlds { get; set; }
 }
 
 [JsonObject]
 public class OrbiterPayload
 {
 	[JsonProperty("event_name")]
-	public string EventName { get; set; }
+	public string EventName { get; set; } = string.Empty;
 }
 
 [JsonObject]
-public class OrbiterEvent
+public class OrbiterResponse
 {
 	[JsonProperty("payload")]
 	[JsonConverter(typeof(OrbiterPayloadConverter))]
@@ -82,33 +91,96 @@ public class OrbiterDeathPayload : OrbiterPayload
 public class OrbiterEventClient : IDisposable
 {
 	private readonly ClientWebSocket _webSocket;
-	
+	private readonly CompositeContractResolver _contractResolver;
+	private readonly BlockingCollection<OrbiterAction> _actionQueue = new();
+	private readonly BlockingCollection<OrbiterResponse> _responseQueue = new();
+
 	public string ServiceId { get; }
 
 	public string Environment => "ps2";
 
-	public event Action<string> OnJsonReceived;
+	public event Action<string>? OnJsonReceived;
 
 	public OrbiterEventClient(string? serviceId = default)
 	{
 		ServiceId = serviceId ?? "example";
 
 		_webSocket = new ClientWebSocket();
+
+		_contractResolver = new CompositeContractResolver()
+		{
+			new CamelCasePropertyNamesContractResolver(),
+			new ShouldSerializeContractResolver()
+		};
 	}
 
-	public async Task Connect(CancellationToken token = default)
+	public void Send(OrbiterAction action, CancellationToken token = default)
+	{
+		try
+		{
+			_actionQueue.Add(action, token);
+		}
+		catch (OperationCanceledException)
+		{
+			// Ignore
+		}
+	}
+
+	public void Send(IEnumerable<OrbiterAction> actions, CancellationToken token = default)
+	{
+		try
+		{
+			foreach (var action in actions)
+			{
+				_actionQueue.Add(action, token);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			// Ignore
+		}
+	}
+
+	public bool Pump([MaybeNullWhen(false)] out OrbiterResponse response, CancellationToken token = default)
+	{
+		try
+		{
+			return _responseQueue.TryTake(out response, 0, token);
+		}
+		catch (OperationCanceledException)
+		{
+			response = null;
+		}
+		
+		return false;
+	}
+
+	public async Task BackgroundTask(CancellationToken token = default)
 	{
 		var uri = new Uri($"wss://push.planetside2.com/streaming?environment={Environment}&service-id=s:{ServiceId}");
+		
 		await _webSocket.ConnectAsync(uri, token);
+
+		var buffer = new byte[2046];
+
+		while (!token.IsCancellationRequested)
+		{
+			if (_actionQueue.TryTake(out var action, 0, token))
+			{
+				var data = JsonConvert.SerializeObject(action);
+				var bytes = Encoding.UTF8.GetBytes(data);
+				await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, token);
+			}
+
+			var response = await Receive(buffer, token);
+			if (response != null)
+			{
+				_responseQueue.Add(response, token);
+			}
+		}
 	}
 
-	public async Task Send(OrbiterAction action, CancellationToken token = default)
-	{
-		var data = JsonConvert.SerializeObject(action);
-		await _webSocket.SendAsync(Encoding.UTF8.GetBytes(data), WebSocketMessageType.Text, true, token);
-	}
-
-	public async Task<OrbiterEvent?> Receive(ArraySegment<byte> buffer, CancellationToken token = default)
+	private async Task<OrbiterResponse?> Receive(ArraySegment<byte> buffer, CancellationToken token = default)
 	{
 		if (buffer.Array == null) throw new ArgumentNullException(nameof(buffer.Array));
 
@@ -137,11 +209,13 @@ public class OrbiterEventClient : IDisposable
 
 		OnJsonReceived?.Invoke(json);
 
-		return JsonConvert.DeserializeObject<OrbiterEvent>(json);
+		return JsonConvert.DeserializeObject<OrbiterResponse>(json);
 	}
 
 	public void Dispose()
 	{
+		_actionQueue.CompleteAdding();
+		_responseQueue.CompleteAdding();
 		_webSocket.Dispose();
 	}
 }

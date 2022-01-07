@@ -22,6 +22,26 @@ public class OrbiterPayloadConverter : JsonConverter<OrbiterPayload>
 
 		var eventType = obj.GetValue("event_type");
 
-		return null;
+		if (eventType == null || eventType.Type == JTokenType.Null)
+		{
+			return null;
+		}
+
+		OrbiterPayload? payload;
+
+		switch (eventType.Value<string>())
+		{
+			case "Death":
+				payload = new OrbiterDeathPayload();
+				break;
+
+			default: return null;
+		}
+
+		using var subReader = obj.CreateReader();
+		
+		serializer.Populate(subReader, payload);
+
+		return payload;
 	}
 }
