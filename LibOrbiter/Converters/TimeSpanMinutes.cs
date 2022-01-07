@@ -1,6 +1,6 @@
 ﻿using Newtonsoft.Json;
 
-namespace LibOrbiter.Converters.PS2V2;
+namespace LibOrbiter.Converters;
 
 public class TimeSpanMinutes : JsonConverter<TimeSpan>
 {

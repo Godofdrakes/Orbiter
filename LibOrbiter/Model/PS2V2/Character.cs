@@ -1,4 +1,5 @@
-﻿using LibOrbiter.Converters.PS2V2;
+﻿using LibOrbiter.Converters;
+using LibOrbiter.Converters.PS2V2;
 using Newtonsoft.Json;
 
 namespace LibOrbiter.Model.PS2V2;
