@@ -1,20 +1,16 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 
-namespace LibOrbiter.Model.CharacterEvents;
+namespace LibOrbiter.Model.PS2;
 
-[JsonObject]
-public class PlayerFacilityCapturePayload : OrbiterPayload
+public class MetagameEventPayload : OrbiterPayload
 {
-	public long CharacterId { get; set; }
-
-	public long FacilityId { get; set; }
-
-	public long OutfitId { get; set; }
-
+	public string FactionNC { get; set; }
+	public string FactionVS { get; set; }
+	public string FactionTR { get; set; }
+	public string MetagameEventState { get; set; }
+	public long MetagameEventId { get; set; }
 	public long WorldId { get; set; }
-
 	public long ZoneId { get; set; }
-
 	public long Timestamp { get; set; }
 
 	[JsonIgnore]
@@ -22,13 +18,12 @@ public class PlayerFacilityCapturePayload : OrbiterPayload
 
 	[JsonIgnore]
 	public DateTime TimestampLocal => TimestampUtc.ToLocalTime();
-
+	
 	public override void WriteMessage(TextWriter writer, NameCache nameCache)
 	{
 		writer.Write($"[{TimestampLocal}] ");
-		writer.Write(nameCache.GetCharacterName(CharacterId));
-		writer.Write(" captured ");
-		writer.Write(FacilityId);
+		writer.Write(nameCache.GetZoneName(ZoneId));
+		writer.Write(" alert started");
 		writer.WriteLine();
 	}
 }

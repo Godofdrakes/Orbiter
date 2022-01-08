@@ -1,6 +1,11 @@
 ﻿using LibOrbiter;
 using LibOrbiter.Model;
-using LibOrbiter.Model.CharacterEvents;
+using LibOrbiter.Model.PS2;
+using LibOrbiter.Model.WorldEvents;
+
+#if DEBUG
+using Newtonsoft.Json;
+#endif
 
 namespace Orbiter.Console;
 
@@ -12,7 +17,7 @@ static class Program
 
 		var token = tokenSource.Token;
 
-		System.Console.CancelKeyPress += (sender, eventArgs) =>
+		System.Console.CancelKeyPress += (_, eventArgs) =>
 		{
 			eventArgs.Cancel = true;
 
@@ -23,10 +28,10 @@ static class Program
 			}
 		};
 
-		var eventClient = new OrbiterClient();
+		var orbiter = new OrbiterClient();
 		
 #if DEBUG
-		eventClient.OnEventReceived += json =>
+		orbiter.OnEventReceived += json =>
 		{
 			using var stringReader = new StringReader(json);
 			using var stringWriter = new StringWriter();
@@ -47,49 +52,46 @@ static class Program
 
 		var nameCache = new NameCache();
 
-		var cacheFactionNames = Task.Run(() => nameCache.CacheFactionNames(new[] {0, 1, 2, 3, 4}, eventClient, token), token);
-		var cacheCharacterNames = Task.Run(() => nameCache.CacheCharacterNames(args, eventClient, token), token);
-		
-		Task.WaitAll(cacheFactionNames, cacheCharacterNames);
+		{
+			var numZones = nameCache.CacheZoneNames(orbiter);
+			var numRegions = nameCache.CacheRegionNames(orbiter);
+			var numFactions = nameCache.CacheFactionNames(orbiter);
+			var numCharacters = nameCache.CacheCharacterNames(orbiter, args);
 
+			System.Console.WriteLine($"zones     : {numZones}");
+			System.Console.WriteLine($"regions   : {numRegions}");
+			System.Console.WriteLine($"factions  : {numFactions}");
+			System.Console.WriteLine($"characters: {numCharacters}");
+		}
+		
 		System.Console.WriteLine("Starting Orbiter...");
 
-		Task.Run(() => eventClient.OpenEventConnection(token), token);
+		Task.Run(() => orbiter.OpenEventConnection(token), token);
 
-		// var facilityControl = new SubscribeAction();
-		// facilityControl.AddEvent<FacilityControlPayload>();
-		// facilityControl.Worlds.Add("1");
-		// eventClient.SendAction(facilityControl, token);
+		var subscribeAction = new SubscribeAction();
+		subscribeAction.Worlds.Add("all");
+		subscribeAction.AddEvent<ContinentLockPayload>();
+		subscribeAction.AddEvent<ContinentUnlockPayload>();
+		subscribeAction.AddEvent<FacilityControlPayload>();
+		subscribeAction.AddEvent<MetagameEventPayload>();
 
-		var characterEvents = new SubscribeAction();
-		characterEvents.Characters.AddRange(args);
-		characterEvents.AddEvent<DeathPayload>();
-		characterEvents.AddEvent<VehicleDestroyPayload>();
-		characterEvents.AddEvent<PlayerFacilityCapturePayload>();
-		characterEvents.AddEvent<PlayerFacilityDefendPayload>();
-		characterEvents.AddEvent<BattleRankUpPayload>();
-		eventClient.SendAction(characterEvents, token);
+		orbiter.SendAction(subscribeAction, token);
 
 		System.Console.WriteLine("Listening for events...");
 		
 		while (true)
 		{
-			if (eventClient.Pump(out var response, token))
+			if (orbiter.Pump(out var response, token))
 			{
 				switch (response.Type)
 				{
 					case "serviceMessage":
-					{
-						if (response.Payload != null)
-						{
-							System.Console.WriteLine(response.Payload.GetMessage(nameCache));
-						}
-
+						response.Payload?.WriteMessage(System.Console.Out, nameCache);
 						break;
-					}
-					
 				}
 			}
+			
+			Thread.Sleep(100);
 
 			if (token.IsCancellationRequested)
 			{

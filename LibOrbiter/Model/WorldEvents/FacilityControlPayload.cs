@@ -1,3 +1,4 @@
+using LibOrbiter.Converters;
 using Newtonsoft.Json;
 
 namespace LibOrbiter.Model.WorldEvents;
@@ -5,15 +6,18 @@ namespace LibOrbiter.Model.WorldEvents;
 [JsonObject]
 public class FacilityControlPayload : OrbiterPayload
 {
-	public string WorldId { get; set; } = string.Empty;
-	public string ZoneId { get; set; } = string.Empty;
-	public string OutfitId { get; set; } = string.Empty;
-	public string FacilityId { get; set; } = string.Empty;
-	public string DurationHeld { get; set; } = string.Empty;
+	public long FacilityId { get; set; }
 
+	public long ZoneId { get; set; }
+	
+	public long WorldId { get; set; }
+	
 	public int OldFactionId { get; set; }
 	public int NewFactionId { get; set; }
 	
+	public long OutfitId { get; set; }
+
+	public long DurationHeld { get; set; }
 	public long Timestamp { get; set; }
 
 	[JsonIgnore]
@@ -22,8 +26,15 @@ public class FacilityControlPayload : OrbiterPayload
 	[JsonIgnore]
 	public DateTime TimestampLocal => TimestampUtc.ToLocalTime();
 
-	public override string GetMessage(NameCache? nameCache = default)
+	public override void WriteMessage(TextWriter writer, NameCache nameCache)
 	{
-		return $"{OutfitId} captured {FacilityId} for the {nameCache?.GetFactionName(NewFactionId) ?? NewFactionId.ToString()}";
+		writer.Write($"[{TimestampLocal}] ");
+		writer.Write(OutfitId);
+		writer.Write(" captured ");
+		writer.Write(nameCache.GetFacilityName(FacilityId));
+		writer.Write(" for the ");
+		writer.Write(nameCache.GetFactionName(NewFactionId));
+		writer.Write($" ({nameCache.GetZoneName(ZoneId)})");
+		writer.WriteLine();
 	}
 }

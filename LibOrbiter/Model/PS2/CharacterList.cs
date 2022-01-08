@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using LibOrbiter.Model.PS2;
+using Newtonsoft.Json;
 
 namespace LibOrbiter.Model.PS2V2;
 

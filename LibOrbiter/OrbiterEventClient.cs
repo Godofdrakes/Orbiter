@@ -1,9 +1,9 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using LibOrbiter.Converters;
-using LibOrbiter.Converters.PS2V2;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using RestSharp;
@@ -11,35 +11,30 @@ using RestSharp.Serializers.NewtonsoftJson;
 
 namespace LibOrbiter;
 
+[JsonObject]
 public class OrbiterAction
 {
-	[JsonProperty("action")]
 	public string Action { get; protected set; } = string.Empty;
 
-	[JsonProperty("service")]
 	public string Service { get; } = "event";
 }
 
 [JsonObject]
 public abstract class OrbiterPayload
 {
-	[JsonProperty("event_name")]
 	public string EventName { get; set; } = string.Empty;
 
-	public abstract string GetMessage(NameCache? nameCache = default);
+	public abstract void WriteMessage(TextWriter writer, NameCache nameCache);
 }
 
 [JsonObject]
 public class OrbiterResponse
 {
-	[JsonProperty("payload")]
 	[JsonConverter(typeof(PayloadConverter))]
 	public OrbiterPayload? Payload { get; set; }
 
-	[JsonProperty("service")]
 	public string Service { get; set; } = string.Empty;
 
-	[JsonProperty("type")]
 	public string Type { get; set; } = string.Empty;
 }
 
@@ -181,6 +176,29 @@ public class OrbiterClient : IDisposable
 
 		return ReadJson(memoryStream);
 	}
+	
+	public async Task<string> GetJson(string resource, KeyValuePair<string, string>[] queryParams, CancellationToken token = default)
+	{
+		var uri = new Uri($"get/{RestEnvironment}/{resource}", UriKind.Relative);
+		var request = new RestRequest(uri, Method.GET, DataFormat.Json);
+		foreach (var (name, value) in queryParams) request.AddQueryParameter(name, value);
+		var response = await _restClient.ExecuteGetAsync(request, token);
+		ThrowIfError(response);
+		return response.Content;
+	}
+
+	public T Get<T>(string resource, IEnumerable<(string, string)> queryParams)
+	{
+		var uri = new Uri($"get/{RestEnvironment}/{resource}", UriKind.Relative);
+		var request = new RestRequest(uri, Method.GET, DataFormat.Json);
+		foreach (var (name, value) in queryParams) request.AddQueryParameter(name, value);
+		var response = _restClient.Execute<T>(request);
+		ThrowIfError(response);
+		return response.Data;
+	}
+
+	public T Get<T>(string resource, List<(string, string)> queryParams) => Get<T>(resource, queryParams.AsEnumerable());
+	public T Get<T>(string resource, params (string, string)[] queryParams) => Get<T>(resource, queryParams.AsEnumerable());
 
 	public async Task<T> GetAsync<T>(string resource, CancellationToken token = default, params KeyValuePair<string, string>[] queryParams)
 	{
@@ -188,6 +206,22 @@ public class OrbiterClient : IDisposable
 		var request = new RestRequest(uri, Method.GET, DataFormat.Json);
 		foreach (var (name, value) in queryParams) request.AddQueryParameter(name, value);
 		return await _restClient.GetAsync<T>(request, token);
+	}
+
+	private void ThrowIfError(IRestResponse response)
+	{
+		var exception = response.ResponseStatus switch
+		{
+			ResponseStatus.Aborted   => new WebException("Request aborted", response.ErrorException),
+			ResponseStatus.Error     => response.ErrorException,
+			ResponseStatus.TimedOut  => new TimeoutException("Request timed out", response.ErrorException),
+			ResponseStatus.None      => null,
+			ResponseStatus.Completed => null,
+			_                        => throw response.ErrorException ?? new ArgumentOutOfRangeException()
+		};
+
+		if (exception != null)
+			throw exception;
 	}
 
 	public void Dispose()

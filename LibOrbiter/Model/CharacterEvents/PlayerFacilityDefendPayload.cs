@@ -5,11 +5,11 @@ namespace LibOrbiter.Model.CharacterEvents;
 [JsonObject]
 public class PlayerFacilityDefendPayload : OrbiterPayload
 {
-	public string CharacterId { get; set; } = string.Empty;
-	public string FacilityId { get; set; } = string.Empty;
-	public string OutfitId { get; set; } = string.Empty;
-	public string WorldId { get; set; } = string.Empty;
-	public string ZoneId { get; set; } = string.Empty;
+	public long CharacterId { get; set; }
+	public long FacilityId { get; set; }
+	public long OutfitId { get; set; }
+	public long WorldId { get; set; }
+	public long ZoneId { get; set; }
 
 	public long Timestamp { get; set; }
 
@@ -19,8 +19,12 @@ public class PlayerFacilityDefendPayload : OrbiterPayload
 	[JsonIgnore]
 	public DateTime TimestampLocal => TimestampUtc.ToLocalTime();
 
-	public override string GetMessage(NameCache? nameCache = default)
+	public override void WriteMessage(TextWriter writer, NameCache nameCache)
 	{
-		return $"[{TimestampLocal}] {CharacterId} defended {FacilityId}";
+		writer.Write($"[{TimestampLocal}] ");
+		writer.Write(nameCache.GetCharacterName(CharacterId));
+		writer.Write(" defended ");
+		writer.Write(FacilityId);
+		writer.WriteLine();
 	}
 }

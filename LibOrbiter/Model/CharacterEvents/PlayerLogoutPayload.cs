@@ -5,8 +5,8 @@ namespace LibOrbiter.Model.CharacterEvents;
 [JsonObject]
 public class PlayerLogoutPayload : OrbiterPayload
 {
-	public string CharacterId { get; set; } = string.Empty;
-	public string WorldId { get; set; } = string.Empty;
+	public long CharacterId { get; set; }
+	public long WorldId { get; set; }
 
 	public long Timestamp { get; set; }
 
@@ -16,8 +16,11 @@ public class PlayerLogoutPayload : OrbiterPayload
 	[JsonIgnore]
 	public DateTime TimestampLocal => TimestampUtc.ToLocalTime();
 
-	public override string GetMessage(NameCache? nameCache = default)
+	public override void WriteMessage(TextWriter writer, NameCache nameCache)
 	{
-		return $"[{TimestampLocal}] {CharacterId} logged off";
+		writer.Write($"[{TimestampLocal}] ");
+		writer.Write(nameCache.GetCharacterName(CharacterId));
+		writer.Write(" logged out");
+		writer.WriteLine();
 	}
 }
