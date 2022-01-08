@@ -23,6 +23,11 @@ public class SubscribeAction : OrbiterAction
 
 	public void AddEventRange(params Type[] eventTypes)
 	{
+		AddEventRange(eventTypes as IEnumerable<Type>);
+	}
+
+	public void AddEventRange(IEnumerable<Type> eventTypes)
+	{
 		foreach (var eventType in eventTypes)
 		{
 			AddEvent(eventType);

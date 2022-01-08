@@ -174,7 +174,7 @@ public class OrbiterClient : IDisposable
 			}
 			while (!result.EndOfMessage);
 		}
-		catch (OperationCanceledException e)
+		catch (OperationCanceledException)
 		{
 			return null;
 		}

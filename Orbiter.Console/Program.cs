@@ -1,7 +1,6 @@
 ﻿using LibOrbiter;
 using LibOrbiter.Model;
-using LibOrbiter.Model.WorldEvents;
-using Newtonsoft.Json;
+using LibOrbiter.Model.CharacterEvents;
 
 namespace Orbiter.Console;
 
@@ -48,16 +47,28 @@ static class Program
 
 		var nameCache = new NameCache();
 
-		Task.Run(() => nameCache.CacheFactionNames(eventClient, token), token).Wait(token);
+		var cacheFactionNames = Task.Run(() => nameCache.CacheFactionNames(new[] {0, 1, 2, 3, 4}, eventClient, token), token);
+		var cacheCharacterNames = Task.Run(() => nameCache.CacheCharacterNames(args, eventClient, token), token);
+		
+		Task.WaitAll(cacheFactionNames, cacheCharacterNames);
 
 		System.Console.WriteLine("Starting Orbiter...");
 
 		Task.Run(() => eventClient.OpenEventConnection(token), token);
 
-		var facilityControl = new SubscribeAction();
-		facilityControl.AddEvent<FacilityControlPayload>();
-		facilityControl.Worlds.Add("1");
-		eventClient.SendAction(facilityControl, token);
+		// var facilityControl = new SubscribeAction();
+		// facilityControl.AddEvent<FacilityControlPayload>();
+		// facilityControl.Worlds.Add("1");
+		// eventClient.SendAction(facilityControl, token);
+
+		var characterEvents = new SubscribeAction();
+		characterEvents.Characters.AddRange(args);
+		characterEvents.AddEvent<DeathPayload>();
+		characterEvents.AddEvent<VehicleDestroyPayload>();
+		characterEvents.AddEvent<PlayerFacilityCapturePayload>();
+		characterEvents.AddEvent<PlayerFacilityDefendPayload>();
+		characterEvents.AddEvent<BattleRankUpPayload>();
+		eventClient.SendAction(characterEvents, token);
 
 		System.Console.WriteLine("Listening for events...");
 		

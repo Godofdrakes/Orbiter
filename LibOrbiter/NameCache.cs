@@ -7,6 +7,8 @@ public class NameCache
 {
 	private readonly ConcurrentDictionary<int, string> _factionNames = new();
 
+	private readonly ConcurrentDictionary<string, string> _characterNames = new();
+
 	private readonly string _languageId;
 
 	public NameCache(string? languageId = default)
@@ -14,14 +16,25 @@ public class NameCache
 		_languageId = languageId ?? "en";
 	}
 
-	public async Task CacheFactionNames(OrbiterClient client, CancellationToken token = default)
+	public async Task CacheFactionNames(int[] factionIds, OrbiterClient client, CancellationToken token = default)
 	{
 		var factions = await client.GetAsync<FactionList>("faction", token,
-			new KeyValuePair<string, string>("faction_id", "0,1,2,3,4"));
+			new KeyValuePair<string, string>("faction_id", string.Join(',', factionIds)));
 
 		foreach (var faction in factions.List)
 		{
 			_factionNames.TryAdd(faction.FactionId, faction.Name[_languageId]);
+		}
+	}
+
+	public async Task CacheCharacterNames(string[] characterIds, OrbiterClient client, CancellationToken token = default)
+	{
+		var characters = await client.GetAsync<CharacterList>("character", token,
+			new KeyValuePair<string, string>("character_id", string.Join(',', characterIds)));
+
+		foreach (var character in characters.List)
+		{
+			_characterNames.TryAdd(character.Id, character.Name.First);
 		}
 	}
 
