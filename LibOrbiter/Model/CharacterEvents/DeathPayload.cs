@@ -1,17 +1,18 @@
 ﻿using Newtonsoft.Json;
 
-namespace LibOrbiter.Model;
+namespace LibOrbiter.Model.CharacterEvents;
 
 [JsonObject]
-public class VehicleDestroyPayload : OrbiterPayload
+public class DeathPayload : OrbiterPayload
 {
 	public string AttackerCharacterId { get; set; } = string.Empty;
-	public string AttackerVehicleId { get; set; } = string.Empty;
-	public string AttackerWeaponId { get; set; } = string.Empty;
 	public string CharacterId { get; set; } = string.Empty;
 	public string VehicleId { get; set; } = string.Empty;
-	public string FacilityId { get; set; } = string.Empty;
-	public string FactionId { get; set; } = string.Empty;
+	public string WorldId { get; set; } = string.Empty;
+	public string ZoneId { get; set; } = string.Empty;
+
+	public int IsHeadshot { get; set; }
+	public int IsCritical { get; set; }
 
 	public long Timestamp { get; set; }
 
@@ -21,8 +22,8 @@ public class VehicleDestroyPayload : OrbiterPayload
 	[JsonIgnore]
 	public DateTime TimestampLocal => TimestampUtc.ToLocalTime();
 
-	public override string GetMessage()
+	public override string GetMessage(NameCache? nameCache = default)
 	{
-		return $"[{TimestampLocal}] {AttackerCharacterId} destroyed {CharacterId}'s vehicle";
+		return $"[{TimestampLocal}] {AttackerCharacterId} killed {CharacterId}{(IsHeadshot == 1 ? " (headshot)" : "")}";
 	}
 }

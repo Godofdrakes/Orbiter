@@ -1,6 +1,6 @@
-﻿using System.Collections.Concurrent;
-using LibOrbiter;
+﻿using LibOrbiter;
 using LibOrbiter.Model;
+using LibOrbiter.Model.WorldEvents;
 using Newtonsoft.Json;
 
 namespace Orbiter.Console;
@@ -24,12 +24,10 @@ static class Program
 			}
 		};
 
-		System.Console.WriteLine("Starting Orbiter...");
-		
-		var orbiter = new OrbiterEventClient();
+		var eventClient = new OrbiterClient();
 		
 #if DEBUG
-		orbiter.OnJsonReceived += json =>
+		eventClient.OnEventReceived += json =>
 		{
 			using var stringReader = new StringReader(json);
 			using var stringWriter = new StringWriter();
@@ -46,25 +44,26 @@ static class Program
 		};
 #endif
 
-		var backgroundTask = Task.Run(async () => await orbiter.BackgroundTask(token), token);
+		System.Console.WriteLine("Precaching names...");
 
-		var characterDeath = new SubscribeAction();
-		characterDeath.AddEventRange(
-			typeof(DeathPayload),
-			typeof(VehicleDestroyPayload),
-			typeof(PlayerLoginPayload),
-			typeof(PlayerLogoutPayload),
-			typeof(PlayerFacilityCapturePayload),
-			typeof(PlayerFacilityDefendPayload),
-			typeof(BattleRankUpPayload));
-		characterDeath.Characters.AddRange(args);
-		orbiter.Send(characterDeath, token);
+		var nameCache = new NameCache();
+
+		Task.Run(() => nameCache.CacheFactionNames(eventClient, token), token).Wait(token);
+
+		System.Console.WriteLine("Starting Orbiter...");
+
+		Task.Run(() => eventClient.OpenEventConnection(token), token);
+
+		var facilityControl = new SubscribeAction();
+		facilityControl.AddEvent<FacilityControlPayload>();
+		facilityControl.Worlds.Add("1");
+		eventClient.SendAction(facilityControl, token);
 
 		System.Console.WriteLine("Listening for events...");
-
-		while (!token.IsCancellationRequested)
+		
+		while (true)
 		{
-			if (orbiter.Pump(out var response, token))
+			if (eventClient.Pump(out var response, token))
 			{
 				switch (response.Type)
 				{
@@ -72,13 +71,18 @@ static class Program
 					{
 						if (response.Payload != null)
 						{
-							System.Console.WriteLine(response.Payload.GetMessage());
+							System.Console.WriteLine(response.Payload.GetMessage(nameCache));
 						}
 
 						break;
 					}
 					
 				}
+			}
+
+			if (token.IsCancellationRequested)
+			{
+				break;
 			}
 		}
 	}

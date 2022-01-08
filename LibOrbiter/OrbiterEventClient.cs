@@ -6,6 +6,8 @@ using LibOrbiter.Converters;
 using LibOrbiter.Converters.PS2V2;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using RestSharp;
+using RestSharp.Serializers.NewtonsoftJson;
 
 namespace LibOrbiter;
 
@@ -24,7 +26,7 @@ public abstract class OrbiterPayload
 	[JsonProperty("event_name")]
 	public string EventName { get; set; } = string.Empty;
 
-	public abstract string GetMessage();
+	public abstract string GetMessage(NameCache? nameCache = default);
 }
 
 [JsonObject]
@@ -41,20 +43,23 @@ public class OrbiterResponse
 	public string Type { get; set; } = string.Empty;
 }
 
-public class OrbiterEventClient : IDisposable
+public class OrbiterClient : IDisposable
 {
+	private readonly RestClient _restClient;
 	private readonly ClientWebSocket _webSocket;
 	private readonly JsonSerializerSettings _jsonSettings;
-	private readonly BlockingCollection<OrbiterAction> _actionQueue = new();
-	private readonly BlockingCollection<OrbiterResponse> _responseQueue = new();
+	private readonly BlockingCollection<OrbiterAction> _actionQueue = new(8);
+	private readonly BlockingCollection<OrbiterResponse> _responseQueue = new(8);
 
 	public string ServiceId { get; }
 
-	public string Environment => "ps2";
+	public string RestEnvironment => "ps2:v2";
 
-	public event Action<string>? OnJsonReceived;
+	public string EventEnvironment => "ps2";
 
-	public OrbiterEventClient(string? serviceId = default)
+	public event Action<string>? OnEventReceived;
+
+	public OrbiterClient(string? serviceId = default)
 	{
 		ServiceId = serviceId ?? "example";
 
@@ -70,28 +75,16 @@ public class OrbiterEventClient : IDisposable
 				}
 			}
 		};
+
+		_restClient = new RestClient($"http://census.daybreakgames.com/s:{ServiceId}");
+		_restClient.UseSerializer(() => new JsonNetSerializer(_jsonSettings));
 	}
 
-	public void Send(OrbiterAction action, CancellationToken token = default)
+	public void SendAction(OrbiterAction action, CancellationToken token = default)
 	{
 		try
 		{
 			_actionQueue.Add(action, token);
-		}
-		catch (OperationCanceledException)
-		{
-			// Ignore
-		}
-	}
-
-	public void Send(IEnumerable<OrbiterAction> actions, CancellationToken token = default)
-	{
-		try
-		{
-			foreach (var action in actions)
-			{
-				_actionQueue.Add(action, token);
-			}
 		}
 		catch (OperationCanceledException)
 		{
@@ -113,15 +106,15 @@ public class OrbiterEventClient : IDisposable
 		return false;
 	}
 
-	public async Task BackgroundTask(CancellationToken token = default)
+	public async void OpenEventConnection(CancellationToken token = default)
 	{
-		var uri = new Uri($"wss://push.planetside2.com/streaming?environment={Environment}&service-id=s:{ServiceId}");
+		var uri = new Uri($"wss://push.planetside2.com/streaming?environment={EventEnvironment}&service-id=s:{ServiceId}");
 
 		await _webSocket.ConnectAsync(uri, token);
 
-		var buffer = new byte[2046];
+		var responseBuffer = new byte[2046];
 
-		while (!token.IsCancellationRequested)
+		while (true)
 		{
 			if (_actionQueue.TryTake(out var action, 0, token))
 			{
@@ -130,44 +123,71 @@ public class OrbiterEventClient : IDisposable
 				await _webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, token);
 			}
 
-			var response = await Receive(buffer, token);
-			if (response != null)
+			var json = await Receive(responseBuffer, token);
+			if (!string.IsNullOrEmpty(json))
 			{
+				OnEventReceived?.Invoke(json);
+
+				var response = JsonConvert.DeserializeObject<OrbiterResponse>(json, _jsonSettings);
+
+				if (response == null) throw new InvalidOperationException();
+				
 				_responseQueue.Add(response, token);
+			}
+
+			if (token.IsCancellationRequested)
+			{
+				break;
 			}
 		}
 	}
+	
+	private string ReadJson(Stream stream)
+	{
+		using var streamReader = new StreamReader(stream, Encoding.UTF8);
 
-	private async Task<OrbiterResponse?> Receive(ArraySegment<byte> buffer, CancellationToken token = default)
+		stream.Seek(0, SeekOrigin.Begin);
+
+		return streamReader.ReadToEnd();
+	}
+	
+	private async Task<string?> Receive(ArraySegment<byte> buffer, CancellationToken token = default)
 	{
 		if (buffer.Array == null) throw new ArgumentNullException(nameof(buffer.Array));
 
 		await using var memoryStream = new MemoryStream();
 
-		WebSocketReceiveResult result;
-
-		do
+		try
 		{
-			result = await _webSocket.ReceiveAsync(buffer, token);
+			WebSocketReceiveResult result;
 
-			memoryStream.Write(buffer.Array, buffer.Offset, result.Count);
+			do
+			{
+				result = await _webSocket.ReceiveAsync(buffer, token);
+				
+				memoryStream.Write(buffer.Array, buffer.Offset, result.Count);
+
+				if (token.IsCancellationRequested)
+				{
+					return null;
+				}
+			}
+			while (!result.EndOfMessage);
 		}
-		while (!result.EndOfMessage);
-
-		if (result.MessageType == WebSocketMessageType.Close)
+		catch (OperationCanceledException e)
 		{
 			return null;
 		}
 
-		memoryStream.Seek(0, SeekOrigin.Begin);
+		return ReadJson(memoryStream);
+	}
 
-		using var reader = new StreamReader(memoryStream, Encoding.UTF8);
-
-		var json = await reader.ReadToEndAsync();
-
-		OnJsonReceived?.Invoke(json);
-
-		return JsonConvert.DeserializeObject<OrbiterResponse>(json, _jsonSettings);
+	public async Task<T> GetAsync<T>(string resource, CancellationToken token = default, params KeyValuePair<string, string>[] queryParams)
+	{
+		var uri = new Uri($"get/{RestEnvironment}/{resource}", UriKind.Relative);
+		var request = new RestRequest(uri, Method.GET, DataFormat.Json);
+		foreach (var (name, value) in queryParams) request.AddQueryParameter(name, value);
+		return await _restClient.GetAsync<T>(request, token);
 	}
 
 	public void Dispose()
